@@ -1,0 +1,15 @@
+{
+  "name": "eu.brunosimoes.h.sockets",
+  "displayName": "H.WebSockets",
+  "version": "0.1.0-preview",
+  "unity": "2019.4",
+  "description": "This is a package for using OrkestraLib in Unity",
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "Example",
+      "description": "OrkestraLib sample",
+      "path": "Samples~/Example"
+    }
+  ]
+}
