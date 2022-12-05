@@ -2,7 +2,6 @@
 
 namespace H.WebSockets.Utilities
 {
-
     /// <summary>
     /// Single value template class for <see cref="EventArgs"/>
     /// </summary>
@@ -23,5 +22,4 @@ namespace H.WebSockets.Utilities
             Value = value;
         }
     }
-
 }

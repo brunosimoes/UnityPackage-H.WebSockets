@@ -3,13 +3,15 @@
   "displayName": "H.WebSockets",
   "version": "0.1.0-preview",
   "unity": "2019.4",
-  "description": "This is a package for using OrkestraLib in Unity",
-  "dependencies": {},
+  "description": "This is a package for using H.WebSockets in Unity",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.0.1"
+  },
   "samples": [
     {
       "displayName": "Example",
-      "description": "OrkestraLib sample",
-      "path": "Samples~/Example"
+      "description": "Minimal working sample",
+      "path": "Samples~/WebSocketsExample"
     }
   ]
 }

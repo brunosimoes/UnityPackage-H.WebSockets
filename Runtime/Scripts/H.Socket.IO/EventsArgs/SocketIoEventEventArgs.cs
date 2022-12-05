@@ -1,6 +1,5 @@
 ﻿namespace H.Socket.IO.EventsArgs
 {
-
     /// <summary>
     /// Arguments used in <see cref="SocketIoClient.EventReceived"/> event
     /// </summary>
@@ -23,5 +22,4 @@
             IsHandled = isHandled;
         }
     }
-
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+
 namespace H.Socket.IO
 {
     internal class SocketIoPacket
@@ -72,6 +73,4 @@ namespace H.Socket.IO
 
         #endregion
     }
-
 }
-

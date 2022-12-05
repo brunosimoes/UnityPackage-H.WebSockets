@@ -59,6 +59,4 @@ namespace H.Socket.IO.Utilities
                 .ToArray();
         }
     }
-
 }
-

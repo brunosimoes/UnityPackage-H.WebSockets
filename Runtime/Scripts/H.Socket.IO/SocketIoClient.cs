@@ -1,24 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.WebSockets;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Net;
 using H.Engine.IO;
 using H.Socket.IO.EventsArgs;
 using H.Socket.IO.Utilities;
 using H.WebSockets.Args;
 using H.WebSockets.Utilities;
 using Newtonsoft.Json;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace H.Socket.IO
 {
-
     /// <summary>
     /// Socket.IO Client.
     /// </summary>
-    public sealed class SocketIoClient : IDisposable
+    public sealed partial class SocketIoClient : IDisposable
 #if NETSTANDARD2_1
     , IAsyncDisposable
 #endif
@@ -67,7 +65,7 @@ namespace H.Socket.IO
         #region Events
 
         /// <summary>
-        /// Occurs after a successful connection to each namespace
+        /// Occurs after a successful connection to each namespace.
         /// </summary>
         public event EventHandler<SocketIoEventEventArgs>? Connected;
 
@@ -77,9 +75,14 @@ namespace H.Socket.IO
         public event EventHandler<WebSocketCloseEventArgs>? Disconnected;
 
         /// <summary>
-        /// Occurs after new event.
+        /// Occurs after new error.
         /// </summary>
-        public event EventHandler<SocketIoEventEventArgs>? EventReceived;
+        public event EventHandler<SocketIoErrorEventArgs>? ErrorReceived;
+
+        /// <summary>
+        /// Occurs after new exception.
+        /// </summary>
+        public event EventHandler<DataEventArgs<Exception>>? ExceptionOccurred;
 
         /// <summary>
         /// Occurs after new handled event(captured by any On).
@@ -92,47 +95,43 @@ namespace H.Socket.IO
         public event EventHandler<SocketIoEventEventArgs>? UnhandledEventReceived;
 
         /// <summary>
-        /// Occurs after new error.
+        /// Occurs after new event.
         /// </summary>
-        public event EventHandler<SocketIoErrorEventArgs>? ErrorReceived;
+        public event EventHandler<SocketIoEventEventArgs>? EventReceived;
 
-        /// <summary>
-        /// Occurs after new exception.
-        /// </summary>
-        public event EventHandler<DataEventArgs<Exception>>? ExceptionOccurred;
-
-        private void OnConnected(string value)
+        private void OnConnected(SocketIoEventEventArgs? evt)
         {
-            Connected?.Invoke(this, new SocketIoEventEventArgs(string.Empty, value, false));
+            Connected?.Invoke(this, evt);
         }
 
-        private void OnDisconnected(string reason, WebSocketCloseStatus? status)
+        private void OnDisconnected(WebSocketCloseEventArgs? evt)
         {
-            Disconnected?.Invoke(this, new WebSocketCloseEventArgs(reason, status));
+            Disconnected?.Invoke(this, evt);
         }
 
-        private void OnEventReceived(string value, string @namespace, bool isHandled)
+        private void OnExceptionOccurred(DataEventArgs<Exception> value)
         {
-            EventReceived?.Invoke(this, new SocketIoEventEventArgs(value, @namespace, isHandled));
-
-            if (isHandled)
-            {
-                HandledEventReceived?.Invoke(this, new SocketIoEventEventArgs(value, @namespace, true));
-            }
-            else
-            {
-                UnhandledEventReceived?.Invoke(this, new SocketIoEventEventArgs(value, @namespace, false));
-            }
+            ExceptionOccurred?.Invoke(this, value);
         }
 
-        private void OnErrorReceived(string value, string @namespace)
+        private void OnErrorReceived(SocketIoErrorEventArgs value)
         {
-            ErrorReceived?.Invoke(this, new SocketIoErrorEventArgs(value, @namespace));
+            ErrorReceived?.Invoke(this, value);
         }
 
-        private void OnExceptionOccurred(Exception value)
+        private void OnHandledEventReceived(SocketIoEventEventArgs value)
         {
-            ExceptionOccurred?.Invoke(this, new DataEventArgs<Exception>(value));
+            HandledEventReceived?.Invoke(this, value);
+        }
+
+        private void OnUnhandledEventReceived(SocketIoEventEventArgs value)
+        {
+            UnhandledEventReceived?.Invoke(this, value);
+        }
+
+        private void OnEventReceived(SocketIoEventEventArgs value)
+        {
+            EventReceived?.Invoke(this, value);
         }
 
         #endregion
@@ -146,8 +145,8 @@ namespace H.Socket.IO
         {
             EngineIoClient = new EngineIoClient("socket.io");
             EngineIoClient.MessageReceived += EngineIoClient_MessageReceived;
-            EngineIoClient.ExceptionOccurred += (_, args) => OnExceptionOccurred(args.Value);
-            EngineIoClient.Closed += (_, args) => OnDisconnected(args.Reason, args.Status);
+            EngineIoClient.ExceptionOccurred += (_, args) => OnExceptionOccurred(new DataEventArgs<Exception>(args.Value));
+            EngineIoClient.Closed += (_, args) => OnDisconnected(args);
         }
 
         #endregion
@@ -173,11 +172,13 @@ namespace H.Socket.IO
                 switch (packet.Prefix)
                 {
                     case SocketIoPacket.ConnectPrefix:
-                        OnConnected(packet.Namespace);
+                        OnConnected(new SocketIoEventEventArgs(string.Empty, packet.Namespace, false));
                         break;
 
                     case SocketIoPacket.DisconnectPrefix:
-                        OnDisconnected("Received disconnect message from server", null);
+                        OnDisconnected(new WebSocketCloseEventArgs(
+                            reason: "Received disconnect message from server",
+                            status: null));
                         break;
 
                     case SocketIoPacket.EventPrefix:
@@ -206,7 +207,7 @@ namespace H.Socket.IO
                                     }
                                     catch (Exception exception)
                                     {
-                                        OnExceptionOccurred(exception);
+                                        OnExceptionOccurred(new DataEventArgs<Exception>(exception));
                                     }
                                 }
                             }
@@ -228,7 +229,7 @@ namespace H.Socket.IO
                                     }
                                     catch (Exception exception)
                                     {
-                                        OnExceptionOccurred(exception);
+                                        OnExceptionOccurred(new DataEventArgs<Exception>(exception));
                                     }
                                 }
                             }
@@ -256,29 +257,40 @@ namespace H.Socket.IO
                                     }
                                     catch (Exception exception)
                                     {
-                                        OnExceptionOccurred(exception);
+                                        OnExceptionOccurred(new DataEventArgs<Exception>(exception));
                                     }
                                 }
                             }
                         }
                         catch (Exception exception)
                         {
-                            OnExceptionOccurred(exception);
+                            OnExceptionOccurred(new DataEventArgs<Exception>(exception));
                         }
                         finally
                         {
-                            OnEventReceived(packet.Value, packet.Namespace, isHandled);
+                            var eventArgs = new SocketIoEventEventArgs(packet.Value, packet.Namespace, isHandled);
+                            OnEventReceived(eventArgs);
+                            if (isHandled)
+                            {
+                                OnHandledEventReceived(eventArgs);
+                            }
+                            else
+                            {
+                                OnUnhandledEventReceived(eventArgs);
+                            }
                         }
                         break;
 
                     case SocketIoPacket.ErrorPrefix:
-                        OnErrorReceived(packet.Value.Trim('\"'), packet.Namespace);
+                        OnErrorReceived(new SocketIoErrorEventArgs(
+                            value: packet.Value.Trim('\"'),
+                            @namespace: packet.Namespace));
                         break;
                 }
             }
             catch (Exception exception)
             {
-                OnExceptionOccurred(exception);
+                OnExceptionOccurred(new DataEventArgs<Exception>(exception));
             }
         }
 
@@ -643,5 +655,4 @@ namespace H.Socket.IO
 
         #endregion
     }
-
 }

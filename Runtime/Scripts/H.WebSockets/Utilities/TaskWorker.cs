@@ -9,7 +9,7 @@ namespace H.WebSockets.Utilities
     /// and supporting automatic cancellation after Dispose <br/>
     /// <![CDATA[Version: 1.0.0.8]]> <br/>
     /// </summary>
-    internal class TaskWorker : IDisposable
+    internal partial class TaskWorker : IDisposable
 #if NETSTANDARD2_1
         , IAsyncDisposable
 #endif
@@ -130,7 +130,7 @@ namespace H.WebSockets.Utilities
                     await func(CancellationTokenSource.Token).ConfigureAwait(false);
 
                     OnSuccessfulCompleted();
-                    OnSuccessfulCompletedOrCanceled(null);
+                    OnSuccessfulCompletedOrCanceled(null!);
                 }
                 catch (OperationCanceledException exception)
                 {
@@ -222,6 +222,4 @@ namespace H.WebSockets.Utilities
 
         #endregion
     }
-
 }
-

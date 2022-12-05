@@ -1,21 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net;
+﻿using System.Net;
 using System.Net.WebSockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using H.WebSockets.Args;
 using H.WebSockets.Utilities;
+using System.Threading.Tasks;
+using System;
+using System.Threading;
+using System.Collections.Generic;
+using System.IO;
 
 namespace H.WebSockets
 {
-
     /// <summary>
     /// 
     /// </summary>
-    public sealed class WebSocketClient : IDisposable
+    public sealed partial class WebSocketClient : IDisposable
 #if NETSTANDARD2_1
         , IAsyncDisposable
 #endif
@@ -86,24 +85,24 @@ namespace H.WebSockets
             Connected?.Invoke(this, EventArgs.Empty);
         }
 
-        private void OnDisconnected(string reason, WebSocketCloseStatus? status)
+        private void OnDisconnected(WebSocketCloseEventArgs? evt)
         {
-            Disconnected?.Invoke(this, new WebSocketCloseEventArgs(reason, status));
+            Disconnected?.Invoke(this, evt);
         }
 
-        private void OnTextReceived(string value)
+        private void OnTextReceived(DataEventArgs<string> value)
         {
-            TextReceived?.Invoke(this, new DataEventArgs<string>(value));
+            TextReceived?.Invoke(this, value);
         }
 
-        private void OnBytesReceived(IReadOnlyCollection<byte> value)
+        private void OnBytesReceived(DataEventArgs<IReadOnlyCollection<byte>> value)
         {
-            BytesReceived?.Invoke(this, new DataEventArgs<IReadOnlyCollection<byte>>(value));
+            BytesReceived?.Invoke(this, value);
         }
 
-        private void OnExceptionOccurred(Exception value)
+        private void OnExceptionOccurred(DataEventArgs<Exception> value)
         {
-            ExceptionOccurred?.Invoke(this, new DataEventArgs<Exception>(value));
+            ExceptionOccurred?.Invoke(this, value);
         }
 
         #endregion
@@ -115,7 +114,7 @@ namespace H.WebSockets
         /// </summary>
         public WebSocketClient()
         {
-            ReceiveWorker.ExceptionOccurred += (_, exception) => OnExceptionOccurred(exception);
+            ReceiveWorker.ExceptionOccurred += (_, exception) => OnExceptionOccurred(new DataEventArgs<Exception>(exception));
         }
 
         #endregion
@@ -192,7 +191,9 @@ namespace H.WebSockets
 
                 if (Socket.State == WebSocketState.Aborted)
                 {
-                    OnDisconnected(Socket.CloseStatusDescription ?? string.Empty, Socket.CloseStatus);
+                    OnDisconnected(new WebSocketCloseEventArgs(
+                        reason: Socket.CloseStatusDescription ?? string.Empty,
+                        status: Socket.CloseStatus));
                 }
             }, nameof(Disconnected), cancellationToken)
                 .ConfigureAwait(false);
@@ -340,56 +341,64 @@ namespace H.WebSockets
                     var buffer = new byte[1024];
 
                     WebSocketReceiveResult result;
-#if NETSTANDARD2_1
-                await using var stream = new MemoryStream();
-#else
-                    using var stream = new MemoryStream();
-#endif
-                    do
-                    {
-                        try
-                        {
-                            result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
-                        }
-                        catch (WebSocketException exception) when (LastConnectUri != null)
-                        {
-                            OnExceptionOccurred(exception);
 
-                            await ConnectAsync(LastConnectUri, cancellationToken).ConfigureAwait(false);
-
-                            result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
-                        }
-
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            OnDisconnected(result.CloseStatusDescription ?? string.Empty, result.CloseStatus);
-                            return;
-                        }
+#pragma warning disable CA2000 // Dispose objects before losing scope
+                    var stream = new MemoryStream();
+#pragma warning restore CA2000 // Dispose objects before losing scope
 
 #if NETSTANDARD2_1
-                    await stream.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken).ConfigureAwait(false);
+                await using (stream.ConfigureAwait(false))
 #else
-                        await stream.WriteAsync(buffer, 0, result.Count, cancellationToken).ConfigureAwait(false);
+                    using (stream)
 #endif
-                    } while (!result.EndOfMessage);
-
-                    stream.Seek(0, SeekOrigin.Begin);
-
-                    switch (result.MessageType)
                     {
-                        case WebSocketMessageType.Text:
+                        do
+                        {
+                            try
                             {
-                                using var reader = new StreamReader(stream, Encoding.UTF8);
-                                var message = await reader.ReadToEndAsync().ConfigureAwait(false);
-                                OnTextReceived(message);
-                                break;
+                                result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
+                            }
+                            catch (WebSocketException exception) when (LastConnectUri != null)
+                            {
+                                OnExceptionOccurred(new DataEventArgs<Exception>(exception));
+
+                                await ConnectAsync(LastConnectUri, cancellationToken).ConfigureAwait(false);
+
+                                result = await Socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
                             }
 
-                        case WebSocketMessageType.Binary:
-                            OnBytesReceived(stream.ToArray());
-                            break;
-                    }
+                            if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                OnDisconnected(new WebSocketCloseEventArgs(
+                                    reason: result.CloseStatusDescription ?? string.Empty,
+                                    status: result.CloseStatus));
+                                return;
+                            }
 
+#if NETSTANDARD2_1
+                        await stream.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken).ConfigureAwait(false);
+#else
+                            await stream.WriteAsync(buffer, 0, result.Count, cancellationToken).ConfigureAwait(false);
+#endif
+                        } while (!result.EndOfMessage);
+
+                        stream.Seek(0, SeekOrigin.Begin);
+
+                        switch (result.MessageType)
+                        {
+                            case WebSocketMessageType.Text:
+                                {
+                                    using var reader = new StreamReader(stream, Encoding.UTF8);
+                                    var message = await reader.ReadToEndAsync().ConfigureAwait(false);
+                                    OnTextReceived(new DataEventArgs<string>(message));
+                                    break;
+                                }
+
+                            case WebSocketMessageType.Binary:
+                                OnBytesReceived(new DataEventArgs<IReadOnlyCollection<byte>>(stream.ToArray()));
+                                break;
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -397,13 +406,14 @@ namespace H.WebSockets
             }
             catch (Exception exception)
             {
-                OnExceptionOccurred(exception);
+                OnExceptionOccurred(new DataEventArgs<Exception>(exception));
             }
 
-            OnDisconnected(Socket.CloseStatusDescription ?? string.Empty, Socket.CloseStatus);
+            OnDisconnected(new WebSocketCloseEventArgs(
+                reason: Socket.CloseStatusDescription ?? string.Empty,
+                status: Socket.CloseStatus));
         }
 
         #endregion
     }
-
 }

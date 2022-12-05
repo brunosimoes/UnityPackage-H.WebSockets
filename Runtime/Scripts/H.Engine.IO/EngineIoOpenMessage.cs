@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 namespace H.Engine.IO
 {
-
     /// <summary>
     /// 
     /// </summary>
@@ -43,4 +42,3 @@ namespace H.Engine.IO
         }
     }
 }
-

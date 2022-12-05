@@ -1,20 +1,19 @@
-﻿using System;
-using System.Net;
-using System.Net.WebSockets;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Net;
 using System.Timers;
 using H.WebSockets;
 using H.WebSockets.Args;
 using H.WebSockets.Utilities;
 using Newtonsoft.Json;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace H.Engine.IO
 {
     /// <summary>
     /// Engine.IO Client
     /// </summary>
-    public sealed class EngineIoClient : IDisposable
+    public sealed partial class EngineIoClient : IDisposable
 #if NETSTANDARD2_1
         , IAsyncDisposable
 #endif
@@ -67,7 +66,7 @@ namespace H.Engine.IO
         public Uri? Uri { get; set; }
 
         private string Framework { get; }
-        private System.Timers.Timer? Timer { get; set; }
+        private System.Timers.Timer Timer { get; set; }
 
         #endregion
 
@@ -118,61 +117,50 @@ namespace H.Engine.IO
         /// </summary>
         public event EventHandler<DataEventArgs<Exception>>? ExceptionOccurred;
 
-        private void OnOpened(EngineIoOpenMessage? value)
+        private void OnOpened(DataEventArgs<EngineIoOpenMessage>? value)
         {
-            if (Timer == null)
-            {
-                return;
-            }
-
-            IsOpened = true;
-
-            Timer.Interval = value?.PingInterval ?? 25000;
-            Timer.Start();
-
-            Opened?.Invoke(this, new DataEventArgs<EngineIoOpenMessage?>(value));
+            Opened?.Invoke(this, value);
         }
 
-        private void OnClosed(string reason, WebSocketCloseStatus? status)
+        private void OnClosed(WebSocketCloseEventArgs? evt)
         {
             IsOpened = false;
-
-            Closed?.Invoke(this, new WebSocketCloseEventArgs(reason, status));
+            Closed?.Invoke(this, evt);
         }
 
-        private void OnPingSent(string value)
+        private void OnPingSent(DataEventArgs<string> value)
         {
-            PingSent?.Invoke(this, new DataEventArgs<string>(value));
+            PingSent?.Invoke(this, value);
         }
 
-        private void OnPingReceived(string value)
+        private void OnPingReceived(DataEventArgs<string> value)
         {
-            PingReceived?.Invoke(this, new DataEventArgs<string>(value));
+            PingReceived?.Invoke(this, value);
         }
 
-        private void OnPongReceived(string value)
+        private void OnPongReceived(DataEventArgs<string> value)
         {
-            PongReceived?.Invoke(this, new DataEventArgs<string>(value));
+            PongReceived?.Invoke(this, value);
         }
 
-        private void OnMessageReceived(string value)
+        private void OnMessageReceived(DataEventArgs<string> value)
         {
-            MessageReceived?.Invoke(this, new DataEventArgs<string>(value));
+            MessageReceived?.Invoke(this, value);
         }
 
-        private void OnUpgraded(string value)
+        private void OnUpgraded(DataEventArgs<string> value)
         {
-            Upgraded?.Invoke(this, new DataEventArgs<string>(value));
+            Upgraded?.Invoke(this, value);
         }
 
-        private void OnNoopReceived(string value)
+        private void OnNoopReceived(DataEventArgs<string> value)
         {
-            NoopReceived?.Invoke(this, new DataEventArgs<string>(value));
+            NoopReceived?.Invoke(this, value);
         }
 
-        private void OnExceptionOccurred(Exception value)
+        private void OnExceptionOccurred(DataEventArgs<Exception> value)
         {
-            ExceptionOccurred?.Invoke(this, new DataEventArgs<Exception>(value));
+            ExceptionOccurred?.Invoke(this, value);
         }
 
         #endregion
@@ -192,8 +180,12 @@ namespace H.Engine.IO
 
             WebSocketClient = new WebSocketClient();
             WebSocketClient.TextReceived += WebSocketClient_OnTextReceived;
-            WebSocketClient.ExceptionOccurred += (_, args) => OnExceptionOccurred(args.Value);
-            WebSocketClient.Disconnected += (_, args) => OnClosed(args.Reason, args.Status);
+            WebSocketClient.ExceptionOccurred += (_, args) => OnExceptionOccurred(new DataEventArgs<Exception>(args.Value));
+            WebSocketClient.Disconnected += (_, args) =>
+            {
+                IsOpened = false;
+                OnClosed(args);
+            };
         }
 
         #endregion
@@ -211,14 +203,14 @@ namespace H.Engine.IO
 
                 await WebSocketClient.SendTextAsync(new EngineIoPacket(EngineIoPacket.PingPrefix, PingMessage).Encode()).ConfigureAwait(false);
 
-                OnPingSent(PingMessage);
+                OnPingSent(new DataEventArgs<string>(PingMessage));
             }
             catch (OperationCanceledException)
             {
             }
             catch (Exception exception)
             {
-                OnExceptionOccurred(exception);
+                OnExceptionOccurred(new DataEventArgs<Exception>(exception));
             }
         }
 
@@ -238,38 +230,44 @@ namespace H.Engine.IO
                     case EngineIoPacket.OpenPrefix:
                         OpenMessage = JsonConvert.DeserializeObject<EngineIoOpenMessage>(packet.Value);
                         IsOpened = true;
-                        OnOpened(OpenMessage);
+
+                        Timer.Interval = OpenMessage?.PingInterval ?? 25000;
+                        Timer.Start();
+
+                        OnOpened(new DataEventArgs<EngineIoOpenMessage>(OpenMessage ?? new EngineIoOpenMessage()));
                         break;
 
                     case EngineIoPacket.ClosePrefix:
                         IsOpened = false;
-                        OnClosed("Received close message from server", null);
+                        OnClosed(new WebSocketCloseEventArgs(
+                            reason: "Received close message from server",
+                            status: null));
                         break;
 
                     case EngineIoPacket.PingPrefix:
-                        OnPingReceived(packet.Value);
+                        OnPingReceived(new DataEventArgs<string>(packet.Value));
                         break;
 
                     case EngineIoPacket.PongPrefix:
-                        OnPongReceived(packet.Value);
+                        OnPongReceived(new DataEventArgs<string>(packet.Value));
                         break;
 
                     case EngineIoPacket.MessagePrefix:
-                        OnMessageReceived(packet.Value);
+                        OnMessageReceived(new DataEventArgs<string>(packet.Value));
                         break;
 
                     case EngineIoPacket.UpgradePrefix:
-                        OnUpgraded(packet.Value);
+                        OnUpgraded(new DataEventArgs<string>(packet.Value));
                         break;
 
                     case EngineIoPacket.NoopPrefix:
-                        OnNoopReceived(packet.Value);
+                        OnNoopReceived(new DataEventArgs<string>(packet.Value));
                         break;
                 }
             }
             catch (Exception exception)
             {
-                OnExceptionOccurred(exception);
+                OnExceptionOccurred(new DataEventArgs<Exception>(exception));
             }
         }
 
@@ -288,7 +286,6 @@ namespace H.Engine.IO
         public async Task<EngineIoOpenMessage?> OpenAsync(Uri uri, CancellationToken cancellationToken = default)
         {
             WebSocketClient = WebSocketClient ?? throw new ObjectDisposedException(nameof(WebSocketClient));
-            Timer = Timer ?? throw new ObjectDisposedException(nameof(Timer));
 
             if (WebSocketClient.IsConnected)
             {
@@ -346,7 +343,6 @@ namespace H.Engine.IO
         public async Task CloseAsync(CancellationToken cancellationToken = default)
         {
             WebSocketClient = WebSocketClient ?? throw new ObjectDisposedException(nameof(WebSocketClient));
-            Timer = Timer ?? throw new ObjectDisposedException(nameof(Timer));
 
             Timer.Stop();
 
@@ -361,7 +357,7 @@ namespace H.Engine.IO
         /// <param name="message"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public async Task SendMessageAsync(string message, CancellationToken cancellationToken = default)
+        public async System.Threading.Tasks.Task SendMessageAsync(string message, CancellationToken cancellationToken = default)
         {
             WebSocketClient = WebSocketClient ?? throw new ObjectDisposedException(nameof(WebSocketClient));
 
@@ -377,8 +373,7 @@ namespace H.Engine.IO
         {
             WebSocketClient.Dispose();
 
-            Timer?.Dispose();
-            Timer = null;
+            Timer.Dispose();
         }
 
 #if NETSTANDARD2_1
@@ -390,8 +385,7 @@ namespace H.Engine.IO
     {
         await WebSocketClient.DisposeAsync().ConfigureAwait(false);
 
-        Timer?.Dispose();
-        Timer = null;
+        Timer.Dispose();
     }
 #endif
 
@@ -399,4 +393,3 @@ namespace H.Engine.IO
     }
 
 }
-

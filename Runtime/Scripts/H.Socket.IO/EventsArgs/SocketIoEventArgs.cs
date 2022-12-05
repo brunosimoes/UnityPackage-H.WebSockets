@@ -28,6 +28,4 @@ namespace H.Socket.IO.EventsArgs
             Namespace = @namespace ?? throw new ArgumentNullException(nameof(@namespace));
         }
     }
-
 }
-

@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 
 namespace H.WebSockets.Utilities
 {
-
     /// <summary>
     /// Extensions that work with <see langword="event"/> <br/>
     /// <![CDATA[Version: 1.0.0.4]]> <br/>

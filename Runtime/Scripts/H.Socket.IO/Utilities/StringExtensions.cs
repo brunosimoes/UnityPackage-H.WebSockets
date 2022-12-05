@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 namespace H.Socket.IO.Utilities
 {
-
     /// <summary>
     /// Extensions that work with <see langword="string"/>
     /// </summary>
@@ -34,5 +33,4 @@ namespace H.Socket.IO.Utilities
             return values.ToArray();
         }
     }
-
 }

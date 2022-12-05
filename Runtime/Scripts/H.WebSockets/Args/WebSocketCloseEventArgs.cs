@@ -30,6 +30,4 @@ namespace H.WebSockets.Args
             Status = status;
         }
     }
-
 }
-
